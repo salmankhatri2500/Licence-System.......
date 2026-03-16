@@ -12,7 +12,7 @@ from db import (agent_by_tid, all_clients, all_agent_payments,
 
                 get_agent_balance, add_agent_payment, queue_all,
 
-                queue_today_count, queue_held_by_agent, get_admin_qr)
+                queue_held_by_agent, get_admin_qr)
 
 from utils import user_data, today_ist, safe_float, safe_int, gen_pay_id, div
 
@@ -28,17 +28,11 @@ async def my_queue(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if not agent: return
 
-    pend = [r for r in queue_all()
+    all_q = queue_all()
 
-            if r.get("agent_id") == agent["agent_id"]
+    pend  = [r for r in all_q if r.get("agent_id") == agent["agent_id"] and r.get("status","").upper() == "PENDING"]
 
-            and r.get("status","").upper() == "PENDING"]
-
-    held = [r for r in queue_all()
-
-            if r.get("agent_id") == agent["agent_id"]
-
-            and r.get("status","").upper() == "HELD"]
+    held  = [r for r in all_q if r.get("agent_id") == agent["agent_id"] and r.get("status","").upper() == "HELD"]
 
     if not pend and not held:
 
@@ -54,21 +48,13 @@ async def my_queue(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
             await update.message.reply_text(
 
-                f"{ap.get('queue_id')}\n"
+                f"{ap.get('queue_id')}\nApp No: {ap.get('app_no')} | DOB: {ap.get('dob')}\n"
 
-                f"App No: {ap.get('app_no')} | DOB: {ap.get('dob')}\n"
-
-                f"Client: {ap.get('client_name')}\n"
-
-                f"Time: {ap.get('submitted_at','')[:16]}")
+                f"Client: {ap.get('client_name')}\nTime: {ap.get('submitted_at','')[:16]}")
 
     if held:
 
-        await update.message.reply_text(
-
-            f"HELD ({len(held)}) - Balance low hone ke karan.\n"
-
-            f"Pay Admin karke release karo.")
+        await update.message.reply_text(f"HELD ({len(held)}) - Balance low. Pay Admin karke release karo.")
 
     await update.message.reply_text(div(), reply_markup=kb_agent())
 
@@ -86,33 +72,25 @@ async def today_summary(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     today = today_ist()
 
-    my_q  = [r for r in queue_all()
+    my_q  = [r for r in queue_all() if r.get("agent_id") == agent["agent_id"] and r.get("submitted_at","").startswith(today)]
 
-             if r.get("agent_id") == agent["agent_id"]
+    done  = sum(1 for r in my_q if r.get("status") == "DONE")
 
-             and r.get("submitted_at","").startswith(today)]
+    pend  = sum(1 for r in my_q if r.get("status") == "PENDING")
 
-    done    = sum(1 for r in my_q if r.get("status") == "DONE")
+    held  = sum(1 for r in my_q if r.get("status") == "HELD")
 
-    pending = sum(1 for r in my_q if r.get("status") == "PENDING")
+    rate  = safe_float(agent.get("rate_per_app", 0))
 
-    held    = sum(1 for r in my_q if r.get("status") == "HELD")
-
-    rate    = safe_float(agent.get("rate_per_app",0))
-
-    bal     = get_agent_balance(agent["agent_id"])
+    bal   = get_agent_balance(agent["agent_id"])
 
     await update.message.reply_text(
 
         f"Today Summary - {today}\n{div()}\n"
 
-        f"Total: {len(my_q)}\n"
+        f"Total: {len(my_q)}\nDone: {done} | Pending: {pend} | Held: {held}\n"
 
-        f"Done: {done} | Pending: {pending} | Held: {held}\n"
-
-        f"Today Earnings: Rs{done * rate}\n"
-
-        f"My Balance: Rs{bal}",
+        f"Today Earnings: Rs{done * rate}\nMy Balance: Rs{bal}",
 
         reply_markup=kb_agent())
 
@@ -188,27 +166,21 @@ async def my_stats(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if not agent: return
 
-    my_q  = [r for r in queue_all() if r.get("agent_id") == agent["agent_id"]]
+    my_q = [r for r in queue_all() if r.get("agent_id") == agent["agent_id"]]
 
-    done  = sum(1 for r in my_q if r.get("status") == "DONE")
+    done = sum(1 for r in my_q if r.get("status") == "DONE")
 
-    rate  = safe_float(agent.get("rate_per_app",0))
+    rate = safe_float(agent.get("rate_per_app", 0))
 
-    bal   = get_agent_balance(agent["agent_id"])
+    bal  = get_agent_balance(agent["agent_id"])
 
     await update.message.reply_text(
 
-        f"My Stats\n{div()}\n"
-
-        f"Clients: {agent.get('total_clients',0)}\n"
+        f"My Stats\n{div()}\nClients: {agent.get('total_clients',0)}\n"
 
         f"Total Apps: {len(my_q)} | Done: {done}\n"
 
-        f"Total Earnings: Rs{done * rate}\n"
-
-        f"Balance: Rs{bal}\n"
-
-        f"Rate: Rs{rate}/app",
+        f"Total Earnings: Rs{done * rate}\nBalance: Rs{bal}\nRate: Rs{rate}/app",
 
         reply_markup=kb_agent())
 
@@ -230,11 +202,7 @@ async def my_balance(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
 
-        f"My Balance\n{div()}\n"
-
-        f"Balance: Rs{bal}\n"
-
-        f"Held apps: {len(held)}",
+        f"My Balance\n{div()}\nBalance: Rs{bal}\nHeld apps: {len(held)}",
 
         reply_markup=kb_agent())
 
@@ -258,9 +226,7 @@ async def referral_link(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
 
-            f"Aapka Referral Link:\n\n{ref_link}\n\n"
-
-            f"Is link se clients register karein.",
+            f"Aapka Referral Link:\n\n{ref_link}\n\nIs link se clients register karein.",
 
             reply_markup=kb_agent())
 
@@ -280,23 +246,23 @@ async def pay_admin_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if not agent: return ConversationHandler.END
 
-    bal   = get_agent_balance(agent["agent_id"])
+    bal      = get_agent_balance(agent["agent_id"])
 
-    held  = queue_held_by_agent(agent["agent_id"])
+    held     = queue_held_by_agent(agent["agent_id"])
 
-    held_info = f"\n{len(held)} apps held (will release after payment)" if held else ""
+    held_txt = f"\n{len(held)} apps held (release hogi payment ke baad)" if held else ""
 
-    admin_qr  = get_admin_qr()
+    caption  = f"Pay Admin\n\nYour balance: Rs{bal}{held_txt}\n\nUPI se payment karo phir amount type karo:"
 
-    caption   = (f"Pay Admin\n\nYour balance: Rs{bal}{held_info}\n\n"
-
-                 f"UPI se payment karo phir amount type karo:")
+    admin_qr = get_admin_qr()
 
     if admin_qr:
 
         try:
 
-            await ctx.bot.send_photo(tid, admin_qr, caption=caption)
+            await update.message.reply_text(caption, reply_markup=REMOVE)
+
+            await ctx.bot.send_photo(tid, admin_qr)
 
         except:
 
@@ -304,13 +270,19 @@ async def pay_admin_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     else:
 
-        await update.message.reply_text(caption, reply_markup=REMOVE)
+        await update.message.reply_text(
+
+            caption + "\n\n(Admin ne abhi QR set nahi kiya)",
+
+            reply_markup=REMOVE)
 
     user_data(tid)["agent_paying_admin"] = True
 
     user_data(tid)["pay_agent_obj"]      = agent
 
     return AGENT_PAY_AMOUNT
+
+
 
 
 
@@ -328,17 +300,27 @@ async def pay_admin_amount(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     except:
 
-        await update.message.reply_text("Valid amount daalo:")
+        await update.message.reply_text("Valid amount daalo (sirf number, e.g. 300):")
 
         return AGENT_PAY_AMOUNT
 
     agent  = d.get("pay_agent_obj")
 
+    if not agent:
+
+        await update.message.reply_text("Session expire. Dobara Pay Admin press karo.", reply_markup=kb_agent())
+
+        d.pop("agent_paying_admin", None)
+
+        return ConversationHandler.END
+
     pay_id = gen_pay_id()
 
-    add_agent_payment(agent, {"pay_id":pay_id,"amount":amount})
+    add_agent_payment(agent, {"pay_id": pay_id, "amount": amount})
 
     d.pop("agent_paying_admin", None)
+
+    d.pop("pay_agent_obj", None)
 
     kb = InlineKeyboardMarkup([[
 
@@ -360,13 +342,9 @@ async def pay_admin_amount(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
             SUPER_ADMIN_ID,
 
-            f"Agent Payment Request\n\n"
+            f"Agent Payment Request\n\nAgent: {agent.get('agent_name')} ({agent.get('agent_id')})\n"
 
-            f"Agent: {agent.get('agent_name')} ({agent.get('agent_id')})\n"
-
-            f"Amount: Rs{amount}\n"
-
-            f"Pay ID: {pay_id}",
+            f"Amount: Rs{amount}\nPay ID: {pay_id}",
 
             reply_markup=kb)
 
@@ -386,7 +364,7 @@ async def settings_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if not agent: return
 
-    rate = get_setting(agent, "rate_per_app") or agent.get("rate_per_app","N/A")
+    rate = get_setting(agent, "rate_per_app") or agent.get("rate_per_app", "N/A")
 
     qr   = get_setting(agent, "qr_file_id")
 
@@ -400,11 +378,7 @@ async def settings_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
 
-        f"Settings\n{div()}\n"
-
-        f"Rate: Rs{rate}/app\n"
-
-        f"QR: {'Set' if qr else 'Not set'}",
+        f"Settings\n{div()}\nRate: Rs{rate}/app\nQR: {'Set' if qr else 'Not set'}",
 
         reply_markup=kb)
 
@@ -451,8 +425,6 @@ async def bc_content(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     agent   = agent_by_tid(tid)
 
     bc_type = user_data(tid).get("bc_type","text")
-
-    from db import all_clients
 
     clients = all_clients(agent)
 
@@ -566,9 +538,9 @@ async def work_history(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     if not agent: return
 
-    my_q  = [r for r in queue_all() if r.get("agent_id") == agent["agent_id"]]
+    my_q = [r for r in queue_all() if r.get("agent_id") == agent["agent_id"]]
 
-    done  = [r for r in my_q if r.get("status") == "DONE"][-10:]
+    done = [r for r in my_q if r.get("status") == "DONE"][-10:]
 
     if not done:
 
@@ -582,15 +554,12 @@ async def work_history(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
 
-            f"Done | {ap.get('queue_id')}\n"
+            f"Done | {ap.get('queue_id')}\nApp No: {ap.get('app_no')}\n"
 
-            f"App No: {ap.get('app_no')}\n"
-
-            f"Client: {ap.get('client_name')}\n"
-
-            f"Done at: {ap.get('done_at','')[:16]}")
+            f"Client: {ap.get('client_name')}\nDone at: {ap.get('done_at','')[:16]}")
 
     await update.message.reply_text(div(), reply_markup=kb_agent())
+
 
 
 
