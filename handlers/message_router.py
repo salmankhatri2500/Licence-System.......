@@ -20,7 +20,7 @@ from handlers.agent import (my_queue, today_summary, work_history, my_clients,
 
                              my_stats, my_balance, referral_link,
 
-                             settings_cmd, pay_admin_start)
+                             settings_cmd)
 
 from handlers.client import (my_apps, my_balance as client_balance, my_profile,
 
@@ -32,13 +32,9 @@ from handlers.client import (my_apps, my_balance as client_balance, my_profile,
 
 async def photo_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
-    # Admin QR first
-
     if await admin_qr_receive(update, ctx):
 
         return
-
-    # Agent QR
 
     from handlers.agent import qr_receive
 
@@ -62,7 +58,11 @@ async def message_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 
-    # Awaiting payment amount (client)
+    # ── Awaiting states (handle BEFORE role routing) ──────────
+
+
+
+    # Client paying agent
 
     if d.get("awaiting_pay_amount"):
 
@@ -72,7 +72,7 @@ async def message_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 
-    # Awaiting admin rate
+    # Admin: rate update
 
     if d.get("awaiting_admin_rate"):
 
@@ -92,11 +92,11 @@ async def message_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
             else:
 
-                await update.message.reply_text("Valid amount daalo:", reply_markup=kb_admin())
+                await update.message.reply_text("Valid number daalo:", reply_markup=kb_admin())
 
         except:
 
-            await update.message.reply_text("Valid amount daalo:", reply_markup=kb_admin())
+            await update.message.reply_text("Valid number daalo:", reply_markup=kb_admin())
 
         d.pop("awaiting_admin_rate", None)
 
@@ -104,7 +104,7 @@ async def message_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 
-    # Awaiting agent balance (admin adding)
+    # Admin: adding agent balance
 
     if d.get("awaiting_agent_bal"):
 
@@ -156,7 +156,7 @@ async def message_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 
-    # Awaiting rate update (agent)
+    # Agent: rate update (via settings inline button)
 
     if d.get("awaiting_rate"):
 
@@ -197,6 +197,8 @@ async def message_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         return
 
 
+
+    # ── Role-based routing ────────────────────────────────────
 
     role = detect_role(tid)
 
@@ -240,7 +242,7 @@ async def message_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         if not agent_active(agent):
 
-            await update.message.reply_text("Account block hai. Admin se contact karo.")
+            await update.message.reply_text("Account block hai.")
 
             return
 
@@ -266,8 +268,6 @@ async def message_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
             "My Balance":    my_balance,
 
-            "Pay Admin":     pay_admin_start,
-
             "Referral Link": referral_link,
 
             "Settings":      settings_cmd,
@@ -292,7 +292,7 @@ async def message_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
         if c and c.get("status") == "blocked":
 
-            await update.message.reply_text("Account block hai. Agent se contact karo.")
+            await update.message.reply_text("Account block hai.")
 
             return
 
@@ -324,10 +324,8 @@ async def message_router(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     else:
 
-        await update.message.reply_text(
-
-            "Registered nahi hain.\nAgent se referral link maango.")
+        await update.message.reply_text("Registered nahi hain.\nAgent se referral link maango.")
 
 
 
-          
+
