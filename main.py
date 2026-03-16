@@ -94,7 +94,7 @@ async def debug_cmd(update, ctx):
 
     if update.effective_user.id != SUPER_ADMIN_ID: return
 
-    from db import all_agents, queue_today_count
+    from db import all_agents, queue_today_count, get_admin_rate, get_admin_qr
 
     lines = ["DEBUG\n"]
 
@@ -106,7 +106,7 @@ async def debug_cmd(update, ctx):
 
         for a in agents[:3]:
 
-            lines.append(f"  {a.get('agent_name')} | {a.get('agent_id')}")
+            lines.append(f"  {a.get('agent_name')} | {a.get('agent_id')} | bal:{a.get('balance',0)}")
 
     except Exception as e:
 
@@ -122,6 +122,10 @@ async def debug_cmd(update, ctx):
 
         lines.append(f"queue error: {e}")
 
+    lines.append(f"Admin rate: Rs{get_admin_rate()}")
+
+    lines.append(f"Admin QR: {'Set' if get_admin_qr() else 'Not set'}")
+
     await update.message.reply_text("\n".join(lines))
 
 
@@ -133,6 +137,8 @@ def build_app():
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
 
+
+    # /start + registration
 
     app.add_handler(ConversationHandler(
 
@@ -148,9 +154,11 @@ def build_app():
 
         fallbacks=[CommandHandler("cancel", cmd_cancel)],
 
-        allow_reentry=True))
+        allow_reentry=True), group=0)
 
 
+
+    # Add Agent
 
     app.add_handler(ConversationHandler(
 
@@ -172,9 +180,11 @@ def build_app():
 
         fallbacks=[CommandHandler("cancel", cmd_cancel)],
 
-        allow_reentry=True))
+        allow_reentry=True), group=0)
 
 
+
+    # New Application
 
     app.add_handler(ConversationHandler(
 
@@ -192,9 +202,29 @@ def build_app():
 
         fallbacks=[CommandHandler("cancel", cmd_cancel)],
 
-        allow_reentry=True))
+        allow_reentry=True), group=0)
 
 
+
+    # Agent Pay Admin
+
+    app.add_handler(ConversationHandler(
+
+        entry_points=[MessageHandler(filters.Regex(r"^Pay Admin$"), pay_admin_start)],
+
+        states={
+
+            AGENT_PAY_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, pay_admin_amount)],
+
+        },
+
+        fallbacks=[CommandHandler("cancel", cmd_cancel)],
+
+        allow_reentry=True), group=0)
+
+
+
+    # Agent Broadcast
 
     app.add_handler(ConversationHandler(
 
@@ -212,9 +242,11 @@ def build_app():
 
         fallbacks=[CommandHandler("cancel", cmd_cancel)],
 
-        allow_reentry=True))
+        allow_reentry=True), group=0)
 
 
+
+    # Admin Broadcast
 
     app.add_handler(ConversationHandler(
 
@@ -234,21 +266,11 @@ def build_app():
 
         fallbacks=[CommandHandler("cancel", cmd_cancel)],
 
-        allow_reentry=True))
+        allow_reentry=True), group=0)
 
 
 
-    app.add_handler(ConversationHandler(
-
-        entry_points=[MessageHandler(filters.Regex(r"^Pay Admin$"), pay_admin_start)],
-
-        states={AGENT_PAY_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, pay_admin_amount)]},
-
-        fallbacks=[CommandHandler("cancel", cmd_cancel)],
-
-        allow_reentry=True))
-
-
+    # Update Rate
 
     app.add_handler(ConversationHandler(
 
@@ -258,7 +280,7 @@ def build_app():
 
         fallbacks=[CommandHandler("cancel", cmd_cancel)],
 
-        allow_reentry=True))
+        allow_reentry=True), group=0)
 
 
 
@@ -272,7 +294,11 @@ def build_app():
 
     app.add_handler(MessageHandler(filters.PHOTO, photo_router))
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_router))
+    # message_router in group=1 so ConversationHandlers (group=0) take priority
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_router), group=1)
+
+
 
     return app
 
@@ -290,7 +316,7 @@ def main():
 
         exit(1)
 
-    logger.info("Starting FOS Bot Final...")
+    logger.info("Starting FOS Bot...")
 
     app = build_app()
 
